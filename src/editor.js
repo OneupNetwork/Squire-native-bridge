@@ -14,7 +14,7 @@ const editor = new Squire(container, {
 const tagName = {
   bold: 'b',
   italic: 'i',
-  deleted: 'del',
+  strikethrough: 'del',
   underline: 'u',
   link: 'a'
 };
@@ -25,7 +25,7 @@ var lastFontInfo = {},
 var lastFormat = {
     bold: false,
     italic: false,
-    deleted: false,
+    strikethrough: false,
     underline: false,
     link: false
   },
@@ -62,7 +62,7 @@ editor.addEventListener(
   false
 );
 
-//The user inserted, deleted or changed the style of some text in other words,
+//The user inserted, strikethrough or changed the style of some text in other words,
 //the result for editor.getHTML() will have changed.
 editor.addEventListener(
   'input',
@@ -128,7 +128,7 @@ function detectFontInfoChnaged() {
 }
 
 //Detecting changes of format when user select text or move cursor.
-//The object containing bold, italic, deleted, underline, link format status.
+//The object containing bold, italic, strikethrough, underline, link format status.
 function detectFormatChnaged() {
   let formatNames = Object.getOwnPropertyNames(lastFormat);
 
