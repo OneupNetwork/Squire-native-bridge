@@ -36,7 +36,7 @@ var lastHeight = 0,
 
 var isFocused = false;
 
-document.getElementById('outer-container').onclick = function(e) {
+document.getElementById('outer-container').onclick = function (e) {
   if (e.target !== this) {
     return;
   } else {
@@ -47,7 +47,7 @@ document.getElementById('outer-container').onclick = function(e) {
 
 editor.addEventListener(
   'focus',
-  function() {
+  function () {
     detectEditorHeightChanged();
     isFocused = true;
   },
@@ -56,7 +56,7 @@ editor.addEventListener(
 
 editor.addEventListener(
   'blur',
-  function() {
+  function () {
     isFocused = false;
   },
   false
@@ -66,7 +66,7 @@ editor.addEventListener(
 //the result for editor.getHTML() will have changed.
 editor.addEventListener(
   'input',
-  function() {
+  function () {
     detectEditorHeightChanged();
     detectFontInfoChnaged();
     detectFormatChnaged();
@@ -77,7 +77,7 @@ editor.addEventListener(
 //The user selected some text
 editor.addEventListener(
   'select',
-  function() {
+  function () {
     detectFontInfoChnaged();
     detectFormatChnaged();
   },
@@ -87,7 +87,7 @@ editor.addEventListener(
 //The user cleared their selection or moved the cursor to a different position
 editor.addEventListener(
   'cursor',
-  function() {
+  function () {
     detectFontInfoChnaged();
     detectFormatChnaged();
   },
@@ -187,7 +187,7 @@ function rgbToHex(rgb) {
   }
 
   if (rgb == null) return null;
-  let color = rgb.match(/\d+/g).map(function(v) {
+  let color = rgb.match(/\d+/g).map(function (v) {
     return parseInt(v);
   });
   return hex(color[0], color[1], color[2]);
@@ -221,7 +221,7 @@ function setFontSize(size) {
   editor.setFontSize(size + 'px');
 }
 
-function setFontColor(hex) {
+function setTextColor(hex) {
   editor.setTextColour(hex);
 }
 
@@ -256,14 +256,14 @@ function inserImage(src) {
 function setTextSelection(startElementId, startIndex, endElementId, endIndex) {
   let startTextNode = Array.prototype.find.call(
     document.getElementById(startElementId).childNodes,
-    function(item) {
+    function (item) {
       return item.nodeType == Node.TEXT_NODE;
     }
   );
 
   let endTextNode = Array.prototype.find.call(
     document.getElementById(endElementId).childNodes,
-    function(item) {
+    function (item) {
       return item.nodeType == Node.TEXT_NODE;
     }
   );
@@ -279,6 +279,10 @@ function setTextSelection(startElementId, startIndex, endElementId, endIndex) {
 
 function getSelectedText() {
   return editor.getSelectedText();
+}
+
+function setTextBackgroundColor(hex) {
+  editor.setHighlightColour(hex)
 }
 
 /******************************
