@@ -197,6 +197,10 @@ function rgbToHex(rgb) {
  * Call function from iOS
  ******************************/
 
+function focusEditor() {
+  editor.focus();
+}
+
 function setFormat(tagKey) {
   let tagValue = tagName[tagKey];
 
