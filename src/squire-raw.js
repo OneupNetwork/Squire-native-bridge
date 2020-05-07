@@ -24,22 +24,19 @@ var win = doc.defaultView;
 var ua = navigator.userAgent;
 
 var isAndroid = /Android/.test( ua );
-var isIOS = /iP(?:ad|hone|od)/.test( ua );
 var isMac = /Mac OS X/.test( ua );
 var isWin = /Windows NT/.test( ua );
+var isIOS = /iP(?:ad|hone|od)/.test( ua ) ||
+    ( isMac && !!navigator.maxTouchPoints );
 
 var isGecko = /Gecko\//.test( ua );
-var isIElt11 = /Trident\/[456]\./.test( ua );
-var isPresto = !!win.opera;
 var isEdge = /Edge\//.test( ua );
 var isWebKit = !isEdge && /WebKit\//.test( ua );
 var isIE = /Trident\/[4567]\./.test( ua );
 
 var ctrlKey = isMac ? 'meta-' : 'ctrl-';
 
-var useTextFixer = isIElt11 || isPresto;
-var cantFocusEmptyTextNodes = isIElt11 || isWebKit;
-var losesSelectionOnBlur = isIElt11;
+var cantFocusEmptyTextNodes = isWebKit;
 
 var canObserveMutations = typeof MutationObserver !== 'undefined';
 var canWeakMap = typeof WeakMap !== 'undefined';
@@ -48,15 +45,6 @@ var canWeakMap = typeof WeakMap !== 'undefined';
 var notWS = /[^ \t\r\n]/;
 
 var indexOf = Array.prototype.indexOf;
-
-// Polyfill for FF3.5
-if ( !Object.create ) {
-    Object.create = function ( proto ) {
-        var F = function () {};
-        F.prototype = proto;
-        return new F();
-    };
-}
 
 /*
     Native TreeWalker is buggy in IE and Opera:
@@ -390,7 +378,7 @@ function createElement ( doc, tag, props, children ) {
         for ( attr in props ) {
             value = props[ attr ];
             if ( value !== undefined ) {
-                el.setAttribute( attr, props[ attr ] );
+                el.setAttribute( attr, value );
             }
         }
     }
@@ -404,7 +392,7 @@ function createElement ( doc, tag, props, children ) {
 
 function fixCursor ( node, root ) {
     // In Webkit and Gecko, block level elements are collapsed and
-    // unfocussable if they have no content. To remedy this, a <BR> must be
+    // unfocusable if they have no content. To remedy this, a <BR> must be
     // inserted. In Opera and IE, we just need a textnode in order for the
     // cursor to appear.
     var self = root.__squire__;
@@ -445,31 +433,10 @@ function fixCursor ( node, root ) {
                 fixer = doc.createTextNode( '' );
             }
         }
-    } else {
-        if ( useTextFixer ) {
-            while ( node.nodeType !== TEXT_NODE && !isLeaf( node ) ) {
-                child = node.firstChild;
-                if ( !child ) {
-                    fixer = doc.createTextNode( '' );
-                    break;
-                }
-                node = child;
-            }
-            if ( node.nodeType === TEXT_NODE ) {
-                // Opera will collapse the block element if it contains
-                // just spaces (but not if it contains no data at all).
-                if ( /^ +$/.test( node.data ) ) {
-                    node.data = '';
-                }
-            } else if ( isLeaf( node ) ) {
-                node.parentNode.insertBefore( doc.createTextNode( '' ), node );
-            }
-        }
-        else if ( !node.querySelector( 'BR' ) ) {
-            fixer = createElement( doc, 'BR' );
-            while ( ( child = node.lastElementChild ) && !isInline( child ) ) {
-                node = child;
-            }
+    } else if ( !node.querySelector( 'BR' ) ) {
+        fixer = createElement( doc, 'BR' );
+        while ( ( child = node.lastElementChild ) && !isInline( child ) ) {
+            node = child;
         }
     }
     if ( fixer ) {
@@ -500,16 +467,14 @@ function fixContainer ( container, root ) {
         isBR = child.nodeName === 'BR';
         if ( !isBR && isInline( child ) ) {
             if ( !wrapper ) {
-                 wrapper = createElement( doc,
-                    config.blockTag, config.blockAttributes );
+                 wrapper = createElement( doc, 'div' );
             }
             wrapper.appendChild( child );
             i -= 1;
             l -= 1;
         } else if ( isBR || wrapper ) {
             if ( !wrapper ) {
-                wrapper = createElement( doc,
-                    config.blockTag, config.blockAttributes );
+                wrapper = createElement( doc, 'div' );
             }
             fixCursor( wrapper, root );
             if ( isBR ) {
@@ -680,18 +645,6 @@ function mergeWithBlock ( block, next, range, root ) {
     range.setStart( block, offset );
     range.collapse( true );
     mergeInlines( block, range );
-
-    // Opera inserts a BR if you delete the last piece of text
-    // in a block-level element. Unfortunately, it then gets
-    // confused when setting the selection subsequently and
-    // refuses to accept the range that finishes just before the
-    // BR. Removing the BR fixes the bug.
-    // Steps to reproduce bug: Type "a-b-c" (where - is return)
-    // then backspace twice. The cursor goes to the top instead
-    // of after "b".
-    if ( isPresto && ( last = block.lastChild ) && last.nodeName === 'BR' ) {
-        block.removeChild( last );
-    }
 }
 
 function mergeContainers ( node, root ) {
@@ -921,6 +874,7 @@ var deleteContentsOfRange = function ( range, root ) {
 // Contents of range will be deleted.
 // After method, range will be around inserted content
 var insertTreeFragmentIntoRange = function ( range, frag, root ) {
+    var firstInFragIsInline = frag.firstChild && isInline( frag.firstChild );
     var node, block, blockContentsAfterSplit, stopPoint, container, offset;
     var replaceBlock, firstBlockInFrag, nodeAfterSplit, nodeBeforeSplit;
     var tempRange;
@@ -946,11 +900,17 @@ var insertTreeFragmentIntoRange = function ( range, frag, root ) {
 
     // Merge the contents of the first block in the frag with the focused block.
     // If there are contents in the block after the focus point, collect this
-    // up to insert in the last block later. If the block is empty, replace
-    // it instead of merging.
+    // up to insert in the last block later. This preserves the style that was
+    // present in this bit of the page.
+    //
+    // If the block being inserted into is empty though, replace it instead of
+    // merging if the fragment had block contents.
+    // e.g. <blockquote><p>Foo</p></blockquote>
+    // This seems a reasonable approximation of user intent.
+
     block = getStartBlockOfRange( range, root );
     firstBlockInFrag = getNextBlock( frag, frag );
-    replaceBlock = !!block && isEmptyBlock( block );
+    replaceBlock = !firstInFragIsInline && !!block && isEmptyBlock( block );
     if ( block && firstBlockInFrag && !replaceBlock &&
             // Don't merge table cells or PRE elements into block
             !getNearest( firstBlockInFrag, frag, 'PRE' ) &&
@@ -1314,12 +1274,6 @@ var onKey = function ( event ) {
         }
     }
 
-    // On keypress, delete and '.' both have event.keyCode 46
-    // Must check event.which to differentiate.
-    if ( isPresto && event.which === 46 ) {
-        key = '.';
-    }
-
     // Function keys
     if ( 111 < code && code < 124 ) {
         key = 'f' + ( code - 111 );
@@ -1426,6 +1380,17 @@ var afterDelete = function ( self, range ) {
     }
 };
 
+var detachUneditableNode = function ( node, root ) {
+    var parent;
+    while (( parent = node.parentNode )) {
+        if ( parent === root || parent.isContentEditable ) {
+            break;
+        }
+        node = parent;
+    }
+    detach( node );
+};
+
 var handleEnter = function ( self, shiftKey, range ) {
     var root = self._root;
     var block, parent, node, offset, nodeAfterSplit;
@@ -1434,7 +1399,9 @@ var handleEnter = function ( self, shiftKey, range ) {
     // Remove any zws so we don't think there's content in an empty
     // block.
     self._recordUndoState( range );
-    addLinks( range.startContainer, root, self );
+    if ( self._config.addLinks ) {
+        addLinks( range.startContainer, root, self );
+    }
     self._removeZWS();
     self._getRangeAndRemoveBookmark( range );
 
@@ -1569,7 +1536,7 @@ var handleEnter = function ( self, shiftKey, range ) {
         // If you try to select the contents of a 'BR', FF will not let
         // you type anything!
         if ( !child || child.nodeName === 'BR' ||
-                ( child.nodeType === TEXT_NODE && !isPresto ) ) {
+                child.nodeType === TEXT_NODE ) {
             break;
         }
         nodeAfterSplit = child;
@@ -1637,7 +1604,7 @@ var keyHandlers = {
             if ( previous ) {
                 // If not editable, just delete whole block.
                 if ( !previous.isContentEditable ) {
-                    detach( previous );
+                    detachUneditableNode( previous, root );
                     return;
                 }
                 // Otherwise merge.
@@ -1704,7 +1671,7 @@ var keyHandlers = {
             if ( next ) {
                 // If not editable, just delete whole block.
                 if ( !next.isContentEditable ) {
-                    detach( next );
+                    detachUneditableNode( next, root );
                     return;
                 }
                 // Otherwise merge.
@@ -1785,7 +1752,9 @@ var keyHandlers = {
         var node, parent;
         var root = self._root;
         self._recordUndoState( range );
-        addLinks( range.startContainer, root, self );
+        if ( self._config.addLinks ) {
+            addLinks( range.startContainer, root, self );
+        }
         self._getRangeAndRemoveBookmark( range );
 
         // If the cursor is at the end of a link (<a>foo|</a>) then move it
@@ -1878,24 +1847,6 @@ var fontSizes = {
 };
 
 var styleToSemantic = {
-    backgroundColor: {
-        regexp: notWS,
-        replace: function ( doc, classNames, colour ) {
-            return createElement( doc, 'SPAN', {
-                'class': classNames.highlight,
-                style: 'background-color:' + colour
-            });
-        }
-    },
-    color: {
-        regexp: notWS,
-        replace: function ( doc, classNames, colour ) {
-            return createElement( doc, 'SPAN', {
-                'class': classNames.colour,
-                style: 'color:' + colour
-            });
-        }
-    },
     fontWeight: {
         regexp: /^bold|^700/i,
         replace: function ( doc ) {
@@ -1937,6 +1888,12 @@ var styleToSemantic = {
 var replaceWithTag = function ( tag ) {
     return function ( node, parent ) {
         var el = createElement( node.ownerDocument, tag );
+        var attributes = node.attributes;
+        var i, l, attribute;
+        for ( i = 0, l = attributes.length; i < l; i += 1 ) {
+            attribute = attributes[i];
+            el.setAttribute( attribute.name, attribute.value );
+        }
         parent.replaceChild( el, node );
         el.appendChild( empty( node ) );
         return el;
@@ -1953,6 +1910,10 @@ var replaceStyles = function ( node, parent, config ) {
         css = style[ attr ];
         if ( css && converter.regexp.test( css ) ) {
             el = converter.replace( doc, config.classNames, css );
+            if ( el.nodeName === node.nodeName &&
+                    el.className === node.className ) {
+                continue;
+            }
             if ( !newTreeTop ) {
                 newTreeTop = el;
             }
@@ -1966,18 +1927,13 @@ var replaceStyles = function ( node, parent, config ) {
 
     if ( newTreeTop ) {
         newTreeBottom.appendChild( empty( node ) );
-        if ( node.nodeName === 'SPAN' ) {
-            parent.replaceChild( newTreeTop, node );
-        } else {
-            node.appendChild( newTreeTop );
-        }
+        node.appendChild( newTreeTop );
     }
 
     return newTreeBottom || node;
 };
 
 var stylesRewriters = {
-    P: replaceStyles,
     SPAN: replaceStyles,
     STRONG: replaceWithTag( 'B' ),
     EM: replaceWithTag( 'I' ),
@@ -2598,12 +2554,6 @@ function Squire ( root, config ) {
     this._isFocused = false;
     this._lastSelection = null;
 
-    // IE loses selection state of iframe on blur, so make sure we
-    // cache it just before it loses focus.
-    if ( losesSelectionOnBlur ) {
-        this.addEventListener( 'beforedeactivate', this.getSelection );
-    }
-
     this._hasZWS = false;
 
     this._lastAnchorNode = null;
@@ -2650,15 +2600,13 @@ function Squire ( root, config ) {
     // IE sometimes fires the beforepaste event twice; make sure it is not run
     // again before our after paste function is called.
     this._awaitingPaste = false;
-    this.addEventListener( isIElt11 ? 'beforecut' : 'cut', onCut );
+    this.addEventListener( 'cut', onCut );
     this.addEventListener( 'copy', onCopy );
     this.addEventListener( 'keydown', monitorShiftKey );
     this.addEventListener( 'keyup', monitorShiftKey );
-    this.addEventListener( isIElt11 ? 'beforepaste' : 'paste', onPaste );
+    this.addEventListener( 'paste', onPaste );
     this.addEventListener( 'drop', onDrop );
-
-    // Opera does not fire keydown repeatedly.
-    this.addEventListener( isPresto ? 'keypress' : 'keydown', onKey );
+    this.addEventListener( 'keydown', onKey );
 
     // Add key handlers
     this._keyHandlers = Object.create( keyHandlers );
@@ -2666,36 +2614,9 @@ function Squire ( root, config ) {
     // Override default properties
     this.setConfig( config );
 
-    // Fix IE<10's buggy implementation of Text#splitText.
-    // If the split is at the end of the node, it doesn't insert the newly split
-    // node into the document, and sets its value to undefined rather than ''.
-    // And even if the split is not at the end, the original node is removed
-    // from the document and replaced by another, rather than just having its
-    // data shortened.
-    // We used to feature test for this, but then found the feature test would
-    // sometimes pass, but later on the buggy behaviour would still appear.
-    // I think IE10 does not have the same bug, but it doesn't hurt to replace
-    // its native fn too and then we don't need yet another UA category.
-    if ( isIElt11 ) {
-        win.Text.prototype.splitText = function ( offset ) {
-            var afterSplit = this.ownerDocument.createTextNode(
-                    this.data.slice( offset ) ),
-                next = this.nextSibling,
-                parent = this.parentNode,
-                toDelete = this.length - offset;
-            if ( next ) {
-                parent.insertBefore( afterSplit, next );
-            } else {
-                parent.appendChild( afterSplit );
-            }
-            if ( toDelete ) {
-                this.deleteData( offset, toDelete );
-            }
-            return afterSplit;
-        };
-    }
-
     root.setAttribute( 'contenteditable', 'true' );
+    // Grammarly breaks the editor, *sigh*
+    root.setAttribute( 'data-gramm', 'false' );
 
     // Remove Firefox's built-in controls
     try {
@@ -2750,7 +2671,8 @@ proto.setConfig = function ( config ) {
         sanitizeToDOMFragment:
             typeof DOMPurify !== 'undefined' && DOMPurify.isSupported ?
             sanitizeToDOMFragment : null,
-        willCutCopy: null
+        willCutCopy: null,
+        addLinks: true
     }, config, true );
 
     // Users may specify block tag in lower case
@@ -4213,24 +4135,7 @@ proto.getHTML = function ( withBookMark ) {
     if ( withBookMark && ( range = this.getSelection() ) ) {
         this._saveRangeToBookmark( range );
     }
-    if ( useTextFixer ) {
-        root = this._root;
-        node = root;
-        while ( node = getNextBlock( node, root ) ) {
-            if ( !node.textContent && !node.querySelector( 'BR' ) ) {
-                fixer = this.createElement( 'BR' );
-                node.appendChild( fixer );
-                brs.push( fixer );
-            }
-        }
-    }
     html = this._getHTML().replace( /\u200B/g, '' );
-    if ( useTextFixer ) {
-        l = brs.length;
-        while ( l-- ) {
-            detach( brs[l] );
-        }
-    }
     if ( range ) {
         this._getRangeAndRemoveBookmark( range );
     }
@@ -4351,7 +4256,57 @@ proto.insertImage = function ( src, attributes ) {
     return img;
 };
 
-proto.linkRegExp = /\b((?:(?:ht|f)tps?:\/\/|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,}\/)(?:[^\s()<>]+|\([^\s()<>]+\))+(?:\((?:[^\s()<>]+|(?:\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))|([\w\-.%+]+@(?:[\w\-]+\.)+[A-Z]{2,}\b)(?:\?[^&?\s]+=[^&?\s]+(?:&[^&?\s]+=[^&?\s]+)*)?/i;
+/*
+const linkRegExp = new RegExp(
+// Only look on boundaries
+'\\b(?:' +
+// Capture group 1: URLs
+'(' +
+    // Add links to URLS
+    // Starts with:
+    '(?:' +
+        // http(s):// or ftp://
+        '(?:ht|f)tps?:\\/\\/' +
+        // or
+        '|' +
+        // www.
+        'www\\d{0,3}[.]' +
+        // or
+        '|' +
+        // foo90.com/
+        '[a-z0-9][a-z0-9.\\-]*[.][a-z]{2,}\\/' +
+    ')' +
+    // Then we get one or more:
+    '(?:' +
+        // Run of non-spaces, non ()<>
+        '[^\\s()<>]+' +
+        // or
+        '|' +
+        // balanced parentheses (one level deep only)
+        '\\([^\\s()<>]+\\)' +
+    ')+' +
+    // And we finish with
+    '(?:' +
+        // Not a space or punctuation character
+        '[^\\s?&`!()\\[\\]{};:\'".,<>«»“”‘’]' +
+        // or
+        '|' +
+        // Balanced parentheses.
+        '\\([^\\s()<>]+\\)' +
+    ')' +
+// Capture group 2: Emails
+')|(' +
+    // Add links to emails
+    '[\\w\\-.%+]+@(?:[\\w\\-]+\\.)+[a-z]{2,}\\b' +
+    // Allow query parameters in the mailto: style
+    '(?:' +
+        '[?][^&?\\s]+=[^\\s?&`!()\\[\\]{};:\'".,<>«»“”‘’]+' +
+        '(?:&[^&?\\s]+=[^\\s?&`!()\\[\\]{};:\'".,<>«»“”‘’]+)*' +
+    ')?' +
+'))', 'i' );
+*/
+
+proto.linkRegExp = /\b(?:((?:(?:ht|f)tps?:\/\/|www\d{0,3}[.]|[a-z0-9][a-z0-9.\-]*[.][a-z]{2,}\/)(?:[^\s()<>]+|\([^\s()<>]+\))+(?:[^\s?&`!()\[\]{};:'".,<>«»“”‘’]|\([^\s()<>]+\)))|([\w\-.%+]+@(?:[\w\-]+\.)+[a-z]{2,}\b(?:[?][^&?\s]+=[^\s?&`!()\[\]{};:'".,<>«»“”‘’]+(?:&[^&?\s]+=[^\s?&`!()\[\]{};:'".,<>«»“”‘’]+)*)?))/i;
 
 var addLinks = function ( frag, root, self ) {
     var doc = frag.ownerDocument;
@@ -4477,11 +4432,11 @@ proto.insertHTML = function ( html, isPaste ) {
     return this;
 };
 
-var escapeHTMLFragement = function ( text ) {
+var escapeHTML = function ( text ) {
     return text.split( '&' ).join( '&amp;' )
-               .split( '<' ).join( '&lt;'  )
-               .split( '>' ).join( '&gt;'  )
-               .split( '"' ).join( '&quot;'  );
+               .split( '<' ).join( '&lt;' )
+               .split( '>' ).join( '&gt;' )
+               .split( '"' ).join( '&quot;' );
 };
 
 proto.insertPlainText = function ( plainText, isPaste ) {
@@ -4527,16 +4482,21 @@ proto.insertPlainText = function ( plainText, isPaste ) {
 
     for ( attr in attributes ) {
         openBlock += ' ' + attr + '="' +
-            escapeHTMLFragement( attributes[ attr ] ) +
+            escapeHTML( attributes[ attr ] ) +
         '"';
     }
     openBlock += '>';
 
     for ( i = 0, l = lines.length; i < l; i += 1 ) {
         line = lines[i];
-        line = escapeHTMLFragement( line ).replace( / (?= )/g, '&nbsp;' );
+        line = escapeHTML( line ).replace( / (?= )/g, '&nbsp;' );
+        // We don't wrap the first line in the block, so if it gets inserted
+        // into a blank line it keeps that line's formatting.
         // Wrap each line in <div></div>
-        lines[i] = openBlock + ( line || '<BR>' ) + closeBlock;
+        if ( i ) {
+            line = openBlock + ( line || '<BR>' ) + closeBlock;
+        }
+        lines[i] = line;
     }
     return this.insertHTML( lines.join( '' ), isPaste );
 };

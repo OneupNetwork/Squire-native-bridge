@@ -23,12 +23,12 @@ var lastFontInfo = {},
   newFontInfo = {};
 
 var lastFormat = {
-    bold: false,
-    italic: false,
-    strikethrough: false,
-    underline: false,
-    link: false
-  },
+  bold: false,
+  italic: false,
+  strikethrough: false,
+  underline: false,
+  link: false
+},
   newFormat = clone(lastFormat);
 
 var lastHeight = 0,
@@ -242,7 +242,7 @@ function getHTML() {
 }
 
 function clear() {
-  editor.setHTML('');
+  editor.setHTML('<div><br><div>');
 }
 
 function makeLink(link) {
@@ -293,14 +293,23 @@ function setTextBackgroundColor(hex) {
  * Post message to iOS
  ******************************/
 
+//delay posting messages to avoid iOS keyboard return event conflicts
+const delayInMilliseconds = 100;
+
 function postEditorContentHeight(height) {
-  window.webkit.messageHandlers.contentHeight.postMessage(height);
+  setTimeout(function () {
+    window.webkit.messageHandlers.contentHeight.postMessage(height);
+  }, delayInMilliseconds);
 }
 
 function postFontInfo(info) {
-  window.webkit.messageHandlers.fontInfo.postMessage(info);
+  setTimeout(function () {
+    window.webkit.messageHandlers.fontInfo.postMessage(info);
+  }, delayInMilliseconds);
 }
 
 function postFormat(format) {
-  window.webkit.messageHandlers.format.postMessage(format);
+  setTimeout(function () {
+    window.webkit.messageHandlers.format.postMessage(format);
+  }, delayInMilliseconds);
 }
