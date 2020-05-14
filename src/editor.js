@@ -88,6 +88,7 @@ editor.addEventListener(
 editor.addEventListener(
   'cursor',
   function () {
+    detectEditorHeightChanged();
     detectFontInfoChnaged();
     detectFormatChnaged();
   },
@@ -242,7 +243,8 @@ function getHTML() {
 }
 
 function clear() {
-  editor.setHTML('<div><br><div>');
+  editor.setHTML('<div><br></div>');
+  editor.moveCursorToStart();
 }
 
 function makeLink(link) {
@@ -293,23 +295,14 @@ function setTextBackgroundColor(hex) {
  * Post message to iOS
  ******************************/
 
-//delay posting messages to avoid iOS keyboard return event conflicts
-const delayInMilliseconds = 100;
-
 function postEditorContentHeight(height) {
-  setTimeout(function () {
-    window.webkit.messageHandlers.contentHeight.postMessage(height);
-  }, delayInMilliseconds);
+  window.webkit.messageHandlers.contentHeight.postMessage(height);
 }
 
 function postFontInfo(info) {
-  setTimeout(function () {
-    window.webkit.messageHandlers.fontInfo.postMessage(info);
-  }, delayInMilliseconds);
+  window.webkit.messageHandlers.fontInfo.postMessage(info);
 }
 
 function postFormat(format) {
-  setTimeout(function () {
-    window.webkit.messageHandlers.format.postMessage(format);
-  }, delayInMilliseconds);
+  window.webkit.messageHandlers.format.postMessage(format);
 }

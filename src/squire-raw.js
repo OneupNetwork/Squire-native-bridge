@@ -1558,17 +1558,18 @@ var keyHandlers = {
     // to what it was before and handle it properly in Squire; the IME state of
     // course doesn't reset so you end up in the correct state!
     enter: isIOS ? function ( self, event, range ) {
-        self._saveRangeToBookmark( range );
-        var html = self._getHTML();
-        var restoreAndDoEnter = function () {
-            self.removeEventListener( 'keyup', restoreAndDoEnter );
-            self._setHTML( html );
-            range = self._getRangeAndRemoveBookmark();
-            // Ignore the shift key on iOS, as this is for auto-capitalisation.
-            handleEnter( self, false, range );
-        };
-        self.addEventListener( 'keyup', restoreAndDoEnter );
-    } : function ( self, event, range ) {
+          self._saveRangeToBookmark( range );
+            var html = self._getHTML() + "<br>";
+            var restoreAndDoEnter = function () {
+                self.removeEventListener( 'keyup', restoreAndDoEnter );
+                self._setHTML( html );
+                range = self._getRangeAndRemoveBookmark();
+                // Ignore the shift key on iOS, as this is for auto-capitalisation.
+                handleEnter( self, false, range );
+            };
+            self.addEventListener( 'keyup', restoreAndDoEnter );
+    } : 
+    function ( self, event, range ) {
         event.preventDefault();
         handleEnter( self, event.shiftKey, range );
     },
