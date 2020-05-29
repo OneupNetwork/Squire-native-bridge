@@ -48,8 +48,8 @@ document.getElementById('outer-container').onclick = function (e) {
 editor.addEventListener(
   'focus',
   function () {
-    detectEditorHeightChanged();
     isFocused = true;
+    postFocusStatus(isFocused);
   },
   false
 );
@@ -67,7 +67,6 @@ editor.addEventListener(
 editor.addEventListener(
   'input',
   function () {
-    detectEditorHeightChanged();
     detectFontInfoChnaged();
     detectFormatChnaged();
   },
@@ -88,22 +87,28 @@ editor.addEventListener(
 editor.addEventListener(
   'cursor',
   function () {
-    detectEditorHeightChanged();
     detectFontInfoChnaged();
     detectFormatChnaged();
+    detectCursorPosition();
   },
   false
 );
 
-//Detecting changes of editor block height
-function detectEditorHeightChanged() {
-  newHeight = container.clientHeight;
+function detectCursorPosition() {
+  let rect = editor.getCursorPosition();
 
-  if (lastHeight == newHeight) return;
+  var position = {
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+    x: rect.x,
+    y: rect.y
+  };
 
-  lastHeight = clone(newHeight);
-
-  postEditorContentHeight(lastHeight);
+  postCursorPosition(position);
 }
 
 //Detecting changes of font info when user select text or move cursor.
@@ -198,8 +203,8 @@ function rgbToHex(rgb) {
  * Call function from iOS
  ******************************/
 
-function focusEditor() {
-  editor.focus();
+function focusEditor(isFocused) {
+  isFocused ? editor.focus() : editor.blur();
 }
 
 function setFormat(tagKey) {
@@ -255,10 +260,6 @@ function removeLink() {
   editor.removeLink();
 }
 
-function inserImage(src) {
-  editor.insertImage(src);
-}
-
 function setTextSelection(startElementId, startIndex, endElementId, endIndex) {
   let startTextNode = Array.prototype.find.call(
     document.getElementById(startElementId).childNodes,
@@ -291,13 +292,13 @@ function setTextBackgroundColor(hex) {
   editor.setHighlightColour(hex)
 }
 
+function getEditorHeight() {
+  return container.clientHeight;
+}
+
 /******************************
  * Post message to iOS
  ******************************/
-
-function postEditorContentHeight(height) {
-  window.webkit.messageHandlers.contentHeight.postMessage(height);
-}
 
 function postFontInfo(info) {
   window.webkit.messageHandlers.fontInfo.postMessage(info);
@@ -306,3 +307,12 @@ function postFontInfo(info) {
 function postFormat(format) {
   window.webkit.messageHandlers.format.postMessage(format);
 }
+
+function postFocusStatus(isFocused) {
+  window.webkit.messageHandlers.isFocused.postMessage(isFocused);
+}
+
+function postCursorPosition(position) {
+  window.webkit.messageHandlers.cursorPosition.postMessage(position);
+}
+

@@ -1285,10 +1285,13 @@ var onKey = function ( event ) {
         if ( event.altKey  ) { modifiers += 'alt-'; }
         if ( event.ctrlKey ) { modifiers += 'ctrl-'; }
         if ( event.metaKey ) { modifiers += 'meta-'; }
+        if ( event.shiftKey ) { modifiers += 'shift-'; }
     }
     // However, on Windows, shift-delete is apparently "cut" (WTF right?), so
-    // we want to let the browser handle shift-delete.
-    if ( event.shiftKey ) { modifiers += 'shift-'; }
+    // we want to let the browser handle shift-delete in this situation.
+    if ( isWin && event.shiftKey && key === 'delete' ) {
+        modifiers += 'shift-';
+    }
 
     key = modifiers + key;
 
@@ -1558,18 +1561,17 @@ var keyHandlers = {
     // to what it was before and handle it properly in Squire; the IME state of
     // course doesn't reset so you end up in the correct state!
     enter: isIOS ? function ( self, event, range ) {
-          self._saveRangeToBookmark( range );
-            var html = self._getHTML() + "<br>";
-            var restoreAndDoEnter = function () {
-                self.removeEventListener( 'keyup', restoreAndDoEnter );
-                self._setHTML( html );
-                range = self._getRangeAndRemoveBookmark();
-                // Ignore the shift key on iOS, as this is for auto-capitalisation.
-                handleEnter( self, false, range );
-            };
-            self.addEventListener( 'keyup', restoreAndDoEnter );
-    } : 
-    function ( self, event, range ) {
+        self._saveRangeToBookmark( range );
+        var html = self._getHTML();
+        var restoreAndDoEnter = function () {
+            self.removeEventListener( 'keyup', restoreAndDoEnter );
+            self._setHTML( html );
+            range = self._getRangeAndRemoveBookmark();
+            // Ignore the shift key on iOS, as this is for auto-capitalisation.
+            handleEnter( self, false, range );
+        };
+        self.addEventListener( 'keyup', restoreAndDoEnter );
+    } : function ( self, event, range ) {
         event.preventDefault();
         handleEnter( self, event.shiftKey, range );
     },
@@ -1822,6 +1824,19 @@ if ( !isMac ) {
     };
 }
 
+const changeIndentationLevel = function ( methodIfInQuote, methodIfInList ) {
+    return function ( self, event ) {
+        event.preventDefault();
+        var path = self.getPath();
+        if ( /(?:^|>)BLOCKQUOTE/.test( path ) || 
+                !/(?:^|>)[OU]L/.test( path ) ) {
+            self[ methodIfInQuote ]();
+        } else {
+            self[ methodIfInList ]();
+        }
+    };
+};
+
 keyHandlers[ ctrlKey + 'b' ] = mapKeyToFormat( 'B' );
 keyHandlers[ ctrlKey + 'i' ] = mapKeyToFormat( 'I' );
 keyHandlers[ ctrlKey + 'u' ] = mapKeyToFormat( 'U' );
@@ -1830,8 +1845,10 @@ keyHandlers[ ctrlKey + 'shift-5' ] = mapKeyToFormat( 'SUB', { tag: 'SUP' } );
 keyHandlers[ ctrlKey + 'shift-6' ] = mapKeyToFormat( 'SUP', { tag: 'SUB' } );
 keyHandlers[ ctrlKey + 'shift-8' ] = mapKeyTo( 'makeUnorderedList' );
 keyHandlers[ ctrlKey + 'shift-9' ] = mapKeyTo( 'makeOrderedList' );
-keyHandlers[ ctrlKey + '[' ] = mapKeyTo( 'decreaseQuoteLevel' );
-keyHandlers[ ctrlKey + ']' ] = mapKeyTo( 'increaseQuoteLevel' );
+keyHandlers[ ctrlKey + '[' ] = 
+    changeIndentationLevel( 'decreaseQuoteLevel', 'decreaseListLevel' );
+keyHandlers[ ctrlKey + ']' ] = 
+    changeIndentationLevel( 'increaseQuoteLevel', 'increaseListLevel' );
 keyHandlers[ ctrlKey + 'd' ] = mapKeyTo( 'toggleCode' );
 keyHandlers[ ctrlKey + 'y' ] = mapKeyTo( 'redo' );
 keyHandlers[ ctrlKey + 'z' ] = mapKeyTo( 'undo' );
