@@ -58,6 +58,7 @@ editor.addEventListener(
   'blur',
   function () {
     isFocused = false;
+    postFocusStatus(isFocused);
   },
   false
 );
